@@ -99,12 +99,14 @@ func NewCephStorage(configFile string) *CephCluster {
 		conn.Shutdown()
 		return nil
 	}
+	stpool := striperPool{&sp}
+	setStripeLayout(stpool)
 	cluster := CephCluster{
 		Conn:       radosConn{conn},
 		Name:       name,
 		InstanceId: id,
 		Pool:       pool{p},
-		Striper:    striperPool{&sp},
+		Striper:    stpool,
 	}
 
 	helper.Logger.Debug("Ceph Cluster", name, "is ready, InstanceId is", name, id)
@@ -190,30 +192,41 @@ func (cluster *CephCluster) doSmallPut(poolname string, oid string, data io.Read
 
 func (cluster *CephCluster) doCommonPut(poolName string, oid string, data io.Reader) (string, uint64, error) {
 	pool := cluster.Pool
-	offset := 0
-	size := 0
+	var current_upload_window = helper.CONFIG.UploadMinChunkSize /* initial window size as MIN_CHUNK_SIZE, max size is MAX_CHUNK_SIZE */
+	var pending_data = make([]byte, current_upload_window)
+
+	var slice_offset = 0
+	// slice is the buffer size of reader, the size is equal to remain size of pending_data
+	var slice = pending_data[0:current_upload_window]
+
 	for {
-		p := make([]byte, helper.CONFIG.UploadMaxChunkSize)
-		count, err := data.Read(p)
+		count, err := data.Read(slice)
 		if err != nil && err != io.EOF {
-			helper.Logger.Debug("ERROR", "oid:", oid, "size:", size, "err:", err)
+			helper.Logger.Debug("ERROR", "oid:", oid, "err:", err)
 			return oid, 0,
 				fmt.Errorf("Read from client failed. pool:%s oid:%s", poolName, oid)
 		}
-		size += count
 		if count == 0 {
 			break
 		}
-		err = pool.Write(oid, p, uint64(offset))
-		if err != nil {
-			helper.Logger.Debug("ERROR", "oid:", oid, "size:", size, "err:", err)
-			return oid, 0,
-				fmt.Errorf("Read from client failed. pool:%s oid:%s", poolName, oid)
+		slice_offset += count
+		slice = pending_data[slice_offset:]
+
+		//is pending_data full?
+		if slice_offset < len(pending_data) {
+			continue
 		}
-		offset = size
 	}
-	helper.Logger.Debug("UPLOAD", "oid:", oid, "szie:", size)
-	return oid, uint64(size), nil
+
+	err := pool.WriteSmallObject(oid, pending_data[:slice_offset])
+	if err != nil {
+		helper.Logger.Debug("ERROR", "oid:", oid, "size:", slice_offset, "err:", err)
+		return oid, 0,
+			fmt.Errorf("Read from client failed. pool:%s oid:%s", poolName, oid)
+	}
+
+	helper.Logger.Debug("UPLOAD", "oid:", oid, "size:", slice_offset)
+	return oid, uint64(slice_offset), nil
 }
 
 type RadosCommonDownloader struct {
