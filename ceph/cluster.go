@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -53,11 +54,15 @@ type CephCluster struct {
 	Conn       RadosConn
 	InstanceId uint64
 	counter    uint64
+	Pool       pool
+	Striper    striperPool
 }
 
 func NewCephStorage(configFile string) *CephCluster {
 
 	helper.Logger.Info("Loading Ceph file", configFile)
+
+	poolName := strings.Split(strings.TrimPrefix(configFile, "/etc/ceph"), ".")[0]
 
 	conn, err := rados.NewConn("admin")
 	conn.SetConfigOption("rados_mon_op_timeout", MON_TIMEOUT)
@@ -83,11 +88,24 @@ func NewCephStorage(configFile string) *CephCluster {
 	}
 
 	id := conn.GetInstanceID()
-
+	p, err := conn.OpenPool(poolName)
+	if err != nil {
+		helper.Logger.Error("Failed to open pool:", configFile)
+		conn.Shutdown()
+		return nil
+	}
+	sp, err := p.CreateStriper()
+	if err != nil {
+		helper.Logger.Error("Failed to Create Striper pool:", configFile)
+		conn.Shutdown()
+		return nil
+	}
 	cluster := CephCluster{
 		Conn:       radosConn{conn},
 		Name:       name,
 		InstanceId: id,
+		Pool:       pool{p},
+		Striper:    striperPool{&sp},
 	}
 
 	helper.Logger.Info("Ceph Cluster", name, "is ready, InstanceId is", name, id)
@@ -220,18 +238,7 @@ func (cluster *CephCluster) Put(poolname string, data io.Reader) (oid string,
 		return oid, size, err
 	}
 
-	pool, err := cluster.Conn.OpenPool(poolname)
-	if err != nil {
-		return oid, 0, fmt.Errorf("Bad poolname %s", poolname)
-	}
-	defer pool.Destroy()
-
-	striper, err := pool.CreateStriper()
-	if err != nil {
-		return oid, 0, fmt.Errorf("Bad ioctx of pool %s", poolname)
-	}
-	defer striper.Destroy()
-
+	striper := cluster.Striper
 	setStripeLayout(striper)
 
 	/* if the data len in pending_data is bigger than current_upload_window, I will flush the data to ceph */
@@ -505,17 +512,8 @@ func (cluster *CephCluster) GetReader(poolName string, oid string, startOffset i
 		return radosSmallReader, nil
 	}
 
-	pool, err := cluster.Conn.OpenPool(poolName)
-	if err != nil {
-		err = errors.New("bad poolname")
-		return
-	}
-
-	striper, err := pool.CreateStriper()
-	if err != nil {
-		err = errors.New("bad ioctx")
-		return
-	}
+	pool := cluster.Pool
+	striper := cluster.Striper
 
 	radosReader := &RadosDownloader{
 		striper:   striper,
