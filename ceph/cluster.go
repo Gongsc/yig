@@ -60,7 +60,7 @@ type CephCluster struct {
 
 func NewCephStorage(configFile string) *CephCluster {
 
-	poolName := strings.Split(strings.TrimPrefix(configFile, "/etc/ceph"), ".")[0]
+	poolName := strings.Split(strings.TrimPrefix(configFile, "/etc/ceph/"), ".")[0]
 	helper.Logger.Debug("Loading Ceph file", configFile, poolName)
 
 	conn, err := rados.NewConn("admin")
