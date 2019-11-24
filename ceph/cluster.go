@@ -196,6 +196,7 @@ func (cluster *CephCluster) doCommonPut(poolName string, oid string, data io.Rea
 		p := make([]byte, helper.CONFIG.UploadMaxChunkSize)
 		count, err := data.Read(p)
 		if err != nil && err != io.EOF {
+			helper.Logger.Debug("ERROR", "oid:", oid, "size:", size, "err:", err)
 			return oid, 0,
 				fmt.Errorf("Read from client failed. pool:%s oid:%s", poolName, oid)
 		}
@@ -205,6 +206,7 @@ func (cluster *CephCluster) doCommonPut(poolName string, oid string, data io.Rea
 		}
 		err = pool.Write(oid, p, uint64(offset))
 		if err != nil {
+			helper.Logger.Debug("ERROR", "oid:", oid, "size:", size, "err:", err)
 			return oid, 0,
 				fmt.Errorf("Read from client failed. pool:%s oid:%s", poolName, oid)
 		}
