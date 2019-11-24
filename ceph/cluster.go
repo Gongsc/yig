@@ -210,6 +210,7 @@ func (cluster *CephCluster) doCommonPut(poolName string, oid string, data io.Rea
 		}
 		offset = size
 	}
+	helper.Logger.Debug("UPLOAD", "oid:", oid, "szie:", size)
 	return oid, uint64(size), nil
 }
 
