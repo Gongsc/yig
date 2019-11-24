@@ -60,9 +60,8 @@ type CephCluster struct {
 
 func NewCephStorage(configFile string) *CephCluster {
 
-	helper.Logger.Info("Loading Ceph file", configFile)
-
 	poolName := strings.Split(strings.TrimPrefix(configFile, "/etc/ceph"), ".")[0]
+	helper.Logger.Debug("Loading Ceph file", configFile, poolName)
 
 	conn, err := rados.NewConn("admin")
 	conn.SetConfigOption("rados_mon_op_timeout", MON_TIMEOUT)
@@ -70,19 +69,19 @@ func NewCephStorage(configFile string) *CephCluster {
 
 	err = conn.ReadConfigFile(configFile)
 	if err != nil {
-		helper.Logger.Error("Failed to open ceph.conf:", configFile)
+		helper.Logger.Debug("Failed to open ceph.conf:", configFile)
 		return nil
 	}
 
 	err = conn.Connect()
 	if err != nil {
-		helper.Logger.Error("Failed to connect to remote cluster:", configFile)
+		helper.Logger.Debug("Failed to connect to remote cluster:", configFile)
 		return nil
 	}
 
 	name, err := conn.GetFSID()
 	if err != nil {
-		helper.Logger.Error("Failed to get FSID:", configFile)
+		helper.Logger.Debug("Failed to get FSID:", configFile)
 		conn.Shutdown()
 		return nil
 	}
@@ -90,13 +89,13 @@ func NewCephStorage(configFile string) *CephCluster {
 	id := conn.GetInstanceID()
 	p, err := conn.OpenPool(poolName)
 	if err != nil {
-		helper.Logger.Error("Failed to open pool:", configFile)
+		helper.Logger.Debug("Failed to open pool:", configFile)
 		conn.Shutdown()
 		return nil
 	}
 	sp, err := p.CreateStriper()
 	if err != nil {
-		helper.Logger.Error("Failed to Create Striper pool:", configFile)
+		helper.Logger.Debug("Failed to Create Striper pool:", configFile)
 		conn.Shutdown()
 		return nil
 	}
@@ -108,7 +107,7 @@ func NewCephStorage(configFile string) *CephCluster {
 		Striper:    striperPool{&sp},
 	}
 
-	helper.Logger.Info("Ceph Cluster", name, "is ready, InstanceId is", name, id)
+	helper.Logger.Debug("Ceph Cluster", name, "is ready, InstanceId is", name, id)
 	return &cluster
 }
 
