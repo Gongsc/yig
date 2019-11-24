@@ -487,8 +487,6 @@ func (rd *RadosDownloader) Seek(offset int64, whence int) (int64, error) {
 }
 
 func (rd *RadosDownloader) Close() error {
-	rd.striper.Destroy()
-	rd.pool.Destroy()
 	return nil
 }
 
