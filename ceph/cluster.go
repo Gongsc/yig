@@ -188,6 +188,70 @@ func (cluster *CephCluster) doSmallPut(poolname string, oid string, data io.Read
 	return size, nil
 }
 
+func (cluster *CephCluster) doCommonPut(poolName string, oid string, data io.Reader) (string, uint64, error) {
+	pool := cluster.Pool
+	offset := 0
+	size := 0
+	for {
+		p := make([]byte, helper.CONFIG.UploadMaxChunkSize)
+		count, err := data.Read(p)
+		if err != nil && err != io.EOF {
+			return oid, 0,
+				fmt.Errorf("Read from client failed. pool:%s oid:%s", poolName, oid)
+		}
+		size += count
+		if count == 0 {
+			break
+		}
+		err = pool.Write(oid, p, uint64(offset))
+		if err != nil {
+			return oid, 0,
+				fmt.Errorf("Read from client failed. pool:%s oid:%s", poolName, oid)
+		}
+		offset = size
+	}
+	return oid, uint64(size), nil
+}
+
+type RadosCommonDownloader struct {
+	oid       string
+	offset    int64
+	remaining int64
+	pool      Pool
+}
+
+func (rd *RadosCommonDownloader) Read(p []byte) (n int, err error) {
+	if rd.remaining <= 0 {
+		return 0, io.EOF
+	}
+	if int64(len(p)) > rd.remaining {
+		p = p[:rd.remaining]
+	}
+	count, err := rd.pool.Read(rd.oid, p, uint64(rd.offset))
+	if count == 0 {
+		return 0, io.EOF
+	}
+	rd.offset += int64(count)
+	rd.remaining -= int64(count)
+	return count, err
+}
+
+func (rd *RadosCommonDownloader) Seek(offset int64, whence int) (int64, error) {
+	switch whence {
+	case 0:
+		rd.offset = offset
+	case 1:
+		rd.offset += offset
+	case 2:
+		panic("Not implemented")
+	}
+	return rd.offset, nil
+}
+
+func (rd *RadosCommonDownloader) Close() error {
+	return nil
+}
+
 type RadosSmallDownloader struct {
 	oid       string
 	offset    int64
@@ -236,6 +300,8 @@ func (cluster *CephCluster) Put(poolname string, data io.Reader) (oid string,
 		size, err = cluster.doSmallPut(poolname, oid, data)
 		return oid, size, err
 	}
+
+	return cluster.doCommonPut(poolname, oid, data)
 
 	striper := cluster.Striper
 	setStripeLayout(striper)
@@ -508,6 +574,12 @@ func (cluster *CephCluster) GetReader(poolName string, oid string, startOffset i
 
 		return radosSmallReader, nil
 	}
+	return &RadosCommonDownloader{
+		oid:       oid,
+		offset:    startOffset,
+		pool:      cluster.Pool,
+		remaining: int64(length),
+	}, nil
 
 	pool := cluster.Pool
 	striper := cluster.Striper
