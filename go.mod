@@ -38,7 +38,7 @@ require (
 	github.com/gorilla/mux v1.6.2
 	github.com/hashicorp/vault/api v1.0.2
 	github.com/journeymidnight/aws-sdk-go v1.18.1
-	github.com/journeymidnight/radoshttpd v0.0.0-20190617133011-609666b51136
+	github.com/journeymidnight/radoshttpd v0.0.0-20190911073816-6df3523aa9e3
 	github.com/minio/highwayhash v1.0.0
 	github.com/prometheus/client_golang v0.9.3-0.20190127221311-3c4408c8b829
 	github.com/stretchr/testify v1.3.0
